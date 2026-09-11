@@ -1,0 +1,1537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Depot — Asset Inventory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#1D2624;
+    --ink-soft:#5B6664;
+    --paper:#F3F2EC;
+    --surface:#FFFFFF;
+    --line:#DBD8CD;
+    --teal:#2B6E63;
+    --teal-dark:#1E4F47;
+    --teal-100:#E4EEEC;
+    --rust:#C15A2E;
+    --rust-100:#F7E7DD;
+    --blue:#3A5A8C;
+    --blue-100:#E4EAF3;
+    --red:#A83B3B;
+    --red-100:#F5E1E1;
+    --gray-100:#E7E5DD;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'IBM Plex Sans', sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:'IBM Plex Mono', monospace;}
+  a{color:inherit;}
+  button{font-family:inherit;cursor:pointer;}
+  input,select,textarea{font-family:inherit;}
+
+  /* ---------- Shell ---------- */
+  #shell{display:flex;min-height:100vh;}
+  #sidebar{
+    width:220px;flex-shrink:0;background:var(--teal-dark);color:#EFEFE8;
+    display:flex;flex-direction:column;position:sticky;top:0;height:100vh;
+  }
+  #sidebar .brand{
+    padding:22px 20px 18px 20px;border-bottom:1px solid rgba(255,255,255,.12);
+  }
+  #sidebar .brand .mark{
+    width:34px;height:34px;border-radius:8px;background:var(--rust);
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:#fff;
+    margin-bottom:10px;
+  }
+  #sidebar .brand .title{font-size:17px;font-weight:600;letter-spacing:.2px;}
+  #sidebar .brand .sub{font-size:12px;color:#C7D6D2;margin-top:2px;}
+  #nav{padding:14px 10px;flex:1;overflow-y:auto;}
+  .nav-item{
+    display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;
+    color:#D6E3E0;font-size:14px;font-weight:500;margin-bottom:2px;
+    border:none;background:transparent;width:100%;text-align:left;
+  }
+  .nav-item:hover{background:rgba(255,255,255,.07);}
+  .nav-item.active{background:rgba(255,255,255,.14);color:#fff;}
+  .nav-item svg{width:17px;height:17px;flex-shrink:0;opacity:.9;}
+  #sidebar .foot{padding:14px 18px 18px 18px;border-top:1px solid rgba(255,255,255,.12);font-size:12px;color:#B9C9C5;}
+  #sidebar .foot .who{color:#EFEFE8;font-weight:600;font-size:13px;}
+
+  #main{flex:1;min-width:0;}
+  #topbar{
+    display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:16px 28px;background:var(--surface);border-bottom:1px solid var(--line);
+    position:sticky;top:0;z-index:20;
+  }
+  #topbar h1{font-size:19px;font-weight:600;margin:0;}
+  #globalSearch{
+    flex:1;max-width:420px;position:relative;
+  }
+  #globalSearch input{
+    width:100%;padding:8px 12px 8px 32px;border:1px solid var(--line);border-radius:8px;
+    background:var(--paper);font-size:13.5px;
+  }
+  #globalSearch input:focus{outline:2px solid var(--teal);outline-offset:-1px;background:#fff;}
+  #globalSearch .icon{position:absolute;left:9px;top:8px;width:15px;height:15px;color:var(--ink-soft);}
+  #menuToggle{display:none;background:none;border:none;padding:6px;}
+  #content{padding:24px 28px 60px 28px;max-width:1180px;}
+
+  /* ---------- Buttons ---------- */
+  .btn{
+    display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:8px;
+    font-size:13.5px;font-weight:600;border:1px solid transparent;white-space:nowrap;
+  }
+  .btn-primary{background:var(--teal);color:#fff;}
+  .btn-primary:hover{background:var(--teal-dark);}
+  .btn-ghost{background:transparent;border-color:var(--line);color:var(--ink);}
+  .btn-ghost:hover{background:var(--paper);}
+  .btn-danger{background:transparent;border-color:var(--red);color:var(--red);}
+  .btn-danger:hover{background:var(--red-100);}
+  .btn-sm{padding:6px 11px;font-size:12.5px;}
+  .btn:disabled{opacity:.45;cursor:not-allowed;}
+
+  /* ---------- Cards / stats ---------- */
+  .stat-row{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px;}
+  .stat-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 16px;}
+  .stat-card .num{font-size:26px;font-weight:700;font-family:'IBM Plex Mono';}
+  .stat-card .lbl{font-size:12.5px;color:var(--ink-soft);margin-top:4px;font-weight:500;}
+  .stat-card .bar{height:3px;border-radius:2px;margin-bottom:10px;width:28px;}
+
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--line);}
+  .panel-head h2{font-size:15px;font-weight:600;margin:0;}
+  .section-title{font-size:20px;font-weight:600;margin:0 0 4px 0;}
+  .section-desc{font-size:13.5px;color:var(--ink-soft);margin:0 0 18px 0;}
+  .row-between{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px;}
+
+  /* ---------- Table ---------- */
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  thead th{
+    text-align:left;padding:10px 14px;font-weight:600;color:var(--ink-soft);
+    border-bottom:1px solid var(--line);font-size:12.5px;cursor:pointer;user-select:none;white-space:nowrap;
+  }
+  thead th:hover{color:var(--ink);}
+  thead th .sort{opacity:.5;font-size:10px;margin-left:3px;}
+  tbody td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:var(--paper);}
+  .id-cell{font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;color:var(--teal-dark);}
+  .table-wrap{overflow-x:auto;}
+  .row-actions{display:flex;gap:6px;}
+  .icon-btn{
+    border:1px solid var(--line);background:#fff;border-radius:6px;padding:5px 7px;
+    display:flex;align-items:center;color:var(--ink-soft);
+  }
+  .icon-btn:hover{background:var(--paper);color:var(--ink);}
+  .icon-btn svg{width:14px;height:14px;}
+
+  /* ---------- Badges ---------- */
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap;}
+  .badge .dot{width:6px;height:6px;border-radius:50%;}
+  .badge-available{background:var(--teal-100);color:var(--teal-dark);}
+  .badge-available .dot{background:var(--teal);}
+  .badge-assigned{background:var(--blue-100);color:var(--blue);}
+  .badge-assigned .dot{background:var(--blue);}
+  .badge-repair{background:var(--rust-100);color:var(--rust);}
+  .badge-repair .dot{background:var(--rust);}
+  .badge-missing{background:var(--red-100);color:var(--red);}
+  .badge-missing .dot{background:var(--red);}
+  .badge-disposed{background:var(--gray-100);color:var(--ink-soft);}
+  .badge-disposed .dot{background:var(--ink-soft);}
+
+  /* ---------- Filters ---------- */
+  .filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  .filter-bar select, .filter-bar input[type=text]{
+    padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:#fff;
+  }
+
+  /* ---------- Forms / Modal ---------- */
+  .overlay{
+    position:fixed;inset:0;background:rgba(20,26,24,.45);display:flex;align-items:flex-start;
+    justify-content:center;padding:40px 16px;overflow-y:auto;z-index:100;
+  }
+  .modal{background:#fff;border-radius:14px;width:100%;max-width:640px;box-shadow:0 20px 50px rgba(0,0,0,.25);}
+  .modal.wide{max-width:760px;}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--line);}
+  .modal-head h3{margin:0;font-size:16.5px;font-weight:600;}
+  .modal-body{padding:20px 22px;max-height:70vh;overflow-y:auto;}
+  .modal-foot{padding:16px 22px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px;}
+  .close-x{background:none;border:none;font-size:20px;color:var(--ink-soft);padding:2px 6px;line-height:1;}
+  .close-x:hover{color:var(--ink);}
+
+  .field-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .field{display:flex;flex-direction:column;gap:5px;margin-bottom:14px;}
+  .field.full{grid-column:1/-1;}
+  .field label{font-size:12.5px;font-weight:600;color:var(--ink-soft);}
+  .field label .req{color:var(--rust);}
+  .field input, .field select, .field textarea{
+    padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;background:var(--paper);
+  }
+  .field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--teal);outline-offset:-1px;background:#fff;}
+  .field textarea{resize:vertical;min-height:64px;}
+  .helper{font-size:11.5px;color:var(--ink-soft);}
+
+  /* ---------- Misc ---------- */
+  .empty-state{padding:50px 20px;text-align:center;color:var(--ink-soft);}
+  .empty-state .big{font-size:32px;margin-bottom:8px;}
+  .list-simple{display:flex;flex-direction:column;}
+  .list-simple .li{display:flex;align-items:center;justify-content:between;padding:12px 18px;border-bottom:1px solid var(--line);gap:10px;}
+  .list-simple .li:last-child{border-bottom:none;}
+  .list-simple .li .name{font-weight:600;flex:1;}
+  .list-simple .li .count{font-size:12px;color:var(--ink-soft);background:var(--paper);padding:2px 8px;border-radius:20px;}
+  .tag-chip{
+    display:inline-flex;align-items:center;gap:8px;background:var(--paper);border:1px solid var(--line);
+    border-radius:20px;padding:6px 12px 6px 14px;font-size:13px;font-weight:500;
+  }
+  .tag-chip button{background:none;border:none;color:var(--ink-soft);font-size:14px;padding:0;}
+  .chip-row{display:flex;gap:8px;flex-wrap:wrap;}
+
+  .activity-item{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);}
+  .activity-item:last-child{border-bottom:none;}
+  .activity-dot{width:8px;height:8px;border-radius:50%;background:var(--teal);margin-top:6px;flex-shrink:0;}
+  .activity-text{font-size:13.5px;}
+  .activity-text b{font-weight:600;}
+  .activity-time{font-size:11.5px;color:var(--ink-soft);margin-top:1px;}
+
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
+    padding:11px 20px;border-radius:8px;font-size:13.5px;font-weight:500;z-index:300;box-shadow:0 8px 24px rgba(0,0,0,.25);
+    opacity:0;transition:opacity .2s ease;pointer-events:none;
+  }
+  .toast.show{opacity:1;}
+
+  .qr-box{display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px;background:var(--paper);border-radius:10px;border:1px solid var(--line);}
+  .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;}
+  .detail-item .k{font-size:11.5px;color:var(--ink-soft);font-weight:600;margin-bottom:2px;}
+  .detail-item .v{font-size:14px;}
+
+  .role-pill{display:inline-flex;padding:3px 10px;border-radius:20px;background:var(--teal-100);color:var(--teal-dark);font-size:11.5px;font-weight:700;}
+
+  @media (max-width: 880px){
+    .stat-row{grid-template-columns:repeat(2,1fr);}
+    .field-grid{grid-template-columns:1fr;}
+    #sidebar{
+      position:fixed;left:0;top:0;bottom:0;z-index:200;transform:translateX(-100%);
+      transition:transform .2s ease;box-shadow:0 0 30px rgba(0,0,0,.3);
+    }
+    #sidebar.open{transform:translateX(0);}
+    #menuToggle{display:flex;align-items:center;justify-content:center;}
+    #content{padding:18px 16px 50px 16px;}
+    #topbar{padding:12px 16px;}
+    #globalSearch{max-width:none;}
+    .detail-grid{grid-template-columns:1fr;}
+  }
+  @media print{
+    #sidebar,#topbar,.no-print{display:none !important;}
+    #content{padding:0;max-width:none;}
+    body{background:#fff;}
+  }
+  .login-wrap{
+    min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--paper);padding:20px;
+  }
+  .login-card{
+    width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:32px 30px;box-shadow:0 20px 50px rgba(0,0,0,.06);
+  }
+  .login-card .mark{
+    width:38px;height:38px;border-radius:9px;background:var(--rust);color:#fff;font-weight:700;font-size:17px;
+    display:flex;align-items:center;justify-content:center;margin-bottom:16px;
+  }
+  .login-card h2{margin:0 0 4px 0;font-size:20px;font-weight:600;}
+  .login-card .sub{font-size:13px;color:var(--ink-soft);margin-bottom:22px;}
+  .login-error{
+    background:var(--red-100);color:var(--red);font-size:12.5px;font-weight:600;padding:9px 12px;
+    border-radius:8px;margin-bottom:14px;display:none;
+  }
+  .login-error.show{display:block;}
+  .login-hint{margin-top:18px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-soft);line-height:1.6;}
+  .login-hint b{color:var(--ink);font-family:'IBM Plex Mono';font-weight:600;}
+
+  .loading-card{text-align:center;}
+  .loading-card .mark{margin:0 auto 16px auto;}
+  .progress-track{width:100%;height:6px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:20px;}
+  .progress-fill{height:100%;width:0%;background:var(--teal);border-radius:4px;transition:width .95s cubic-bezier(.4,0,.2,1);}
+</style>
+</head>
+<body>
+
+<div class="login-wrap" id="loadingScreen" style="display:none;">
+  <div class="login-card loading-card">
+    <div class="mark">D</div>
+    <h2>Signing you in…</h2>
+    <div class="sub" id="loadingSub">Loading your inventory</div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+</div>
+
+<div class="login-wrap" id="connectingScreen" style="display:flex;">
+  <div class="login-card loading-card">
+    <div class="mark">D</div>
+    <h2>Loading Depot…</h2>
+    <div class="sub">Connecting to your inventory</div>
+    <div class="progress-track"><div class="progress-fill" id="connectingFill" style="width:30%;transition:width 2s ease;"></div></div>
+  </div>
+</div>
+
+<div class="login-wrap" id="loginScreen" style="display:none;">
+  <div class="login-card">
+    <div class="mark">D</div>
+    <h2>Log in to Depot</h2>
+    <div class="sub">Asset Inventory System</div>
+    <div class="login-error" id="loginError">Incorrect username or password.</div>
+    <form id="loginForm">
+      <div class="field"><label>Username</label><input name="username" id="loginUsername" autocomplete="username" required></div>
+      <div class="field"><label>Password</label><input type="password" name="password" id="loginPassword" autocomplete="current-password" required></div>
+      <button type="submit" class="btn btn-primary" id="loginSubmitBtn" style="width:100%;justify-content:center;margin-top:4px;">Log In</button>
+    </form>
+  </div>
+</div>
+
+<div id="shell" style="display:none;">
+  <aside id="sidebar">
+    <div class="brand">
+      <div class="mark">D</div>
+      <div class="title">Depot</div>
+      <div class="sub">Asset Inventory</div>
+    </div>
+    <nav id="nav"></nav>
+    <div class="foot">
+      <div class="who" id="sidebarUser">Admin User</div>
+      <div id="sidebarRole">Administrator</div>
+      <div id="cloudBadge" style="font-size:11px;margin-top:6px;font-weight:600;"></div>
+      <button class="btn btn-ghost btn-sm" id="logoutBtn" style="margin-top:10px;width:100%;justify-content:center;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.25);color:#EFEFE8;">Log Out</button>
+    </div>
+  </aside>
+
+  <div id="main">
+    <div id="topbar">
+      <button id="menuToggle" aria-label="Menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <h1 id="pageTitle">Dashboard</h1>
+      <div id="globalSearch">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="globalSearchInput" placeholder="Search assets, tags, serials, people…">
+      </div>
+    </div>
+    <div id="content"></div>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* Global error banner — surfaces any script error visibly instead of failing silently */
+window.addEventListener('error', function(e){
+  try{
+    let banner = document.getElementById('__depot_error_banner__');
+    if(!banner){
+      banner = document.createElement('div');
+      banner.id = '__depot_error_banner__';
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#A83B3B;color:#fff;padding:12px 18px;font:13px sans-serif;z-index:99999;white-space:pre-wrap;';
+      document.body.appendChild(banner);
+    }
+    banner.textContent = 'App error: ' + (e.message || e) + (e.filename ? (' (' + e.filename.split('/').pop() + ':' + e.lineno + ')') : '');
+  }catch(_){}
+});
+</script>
+<script>
+/* ===================== ICONS ===================== */
+const ICONS = {
+  dashboard:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
+  assets:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>',
+  categories:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>',
+  locations:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+  employees:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  reports:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3v5h5"/><path d="M6 3h8l5 5v13H6z"/><path d="M9 13h6M9 17h6M9 9h2"/></svg>',
+  users:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4.5 5-6 8-6s6.5 1.5 8 6"/></svg>',
+  settings:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.36.14.76.22 1.15.2H21a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>',
+  edit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
+  eye:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>',
+  trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6h12z"/></svg>',
+  qr:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20v.01"/></svg>',
+};
+
+/* ===================== SUPABASE CONNECTION ===================== */
+const SUPABASE_URL = 'https://bgciayhxvkqhmgcdfvco.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_jQPZh50UUxN3xFlFOug58w_JM1hW8u4';
+let supabaseClient = null;
+try{
+  if(window.supabase && window.supabase.createClient){
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+}catch(e){ supabaseClient = null; }
+let cloudStatus = 'unknown'; // 'connected' | 'offline' | 'unknown'
+
+function assetToRow(a){
+  return {
+    id:a.id, name:a.name||'', category:a.category||'', tag:a.tag||'', brand:a.brand||'',
+    model:a.model||'', serial:a.serial||'', location:a.location||'', assigned_to:a.assignedTo||'',
+    assigned_dept:a.assignedDept||'', purchase_date:a.purchaseDate||'', purchase_cost:String(a.purchaseCost??''),
+    warranty_expiry:a.warrantyExpiry||'', status:a.status||'Available', description:a.description||'',
+    photo:a.photo||null, created_at:a.createdAt||new Date().toISOString()
+  };
+}
+function rowToAsset(r){
+  return {
+    id:r.id, name:r.name, category:r.category, tag:r.tag, brand:r.brand, model:r.model, serial:r.serial,
+    location:r.location, assignedTo:r.assigned_to, assignedDept:r.assigned_dept, purchaseDate:r.purchase_date,
+    purchaseCost:r.purchase_cost, warrantyExpiry:r.warranty_expiry, status:r.status, description:r.description,
+    photo:r.photo, createdAt:r.created_at
+  };
+}
+function historyToRow(h){ return {id:h.id, asset_id:h.assetId, action:h.action, detail:h.detail||'', app_user:h.user||'', ts:h.timestamp||new Date().toISOString()}; }
+function rowToHistory(r){ return {id:r.id, assetId:r.asset_id, action:r.action, detail:r.detail, user:r.app_user, timestamp:r.ts}; }
+function userToRow(u){ return {id:u.id, username:u.username, password:u.password, name:u.name, role:u.role}; }
+function rowToUser(r){ return {id:r.id, username:r.username, password:r.password, name:r.name, role:r.role}; }
+
+async function fetchAllFromSupabase(){
+  if(!supabaseClient) return null;
+  try{
+    const [cats, locs, emps, users, assets, hist, meta] = await Promise.all([
+      supabaseClient.from('categories').select('name').order('id'),
+      supabaseClient.from('locations').select('name').order('id'),
+      supabaseClient.from('employees').select('*'),
+      supabaseClient.from('app_users').select('*'),
+      supabaseClient.from('assets').select('*').order('created_at', {ascending:false}),
+      supabaseClient.from('asset_history').select('*').order('ts', {ascending:false}),
+      supabaseClient.from('app_meta').select('*').eq('key','next_asset_num').maybeSingle(),
+    ]);
+    if(cats.error || locs.error || emps.error || users.error || assets.error || hist.error) throw (cats.error||locs.error||emps.error||users.error||assets.error||hist.error);
+    return {
+      categories: cats.data.map(r=>r.name),
+      locations: locs.data.map(r=>r.name),
+      employees: emps.data.map(e=>({id:e.id,name:e.name,department:e.department})),
+      users: users.data.map(rowToUser),
+      assets: assets.data.map(rowToAsset),
+      history: hist.data.map(rowToHistory),
+      nextAssetNum: meta.data ? parseInt(meta.data.value,10) : 1,
+      settings: { currentUser:'Admin User', role:'Admin' }
+    };
+  }catch(e){ return null; }
+}
+
+/* Push the full current DATA snapshot to Supabase (replace-all sync).
+   Fire-and-forget from persist(); failures fall back silently to local-only storage. */
+let syncInFlight = false, syncQueued = false;
+async function syncToSupabase(){
+  if(!supabaseClient) { cloudStatus = 'offline'; updateCloudBadge(); return; }
+  if(syncInFlight){ syncQueued = true; return; }
+  syncInFlight = true;
+  try{
+    const snapshot = JSON.parse(JSON.stringify(DATA));
+    await Promise.all([
+      supabaseClient.from('categories').delete().neq('name','__none__'),
+      supabaseClient.from('locations').delete().neq('name','__none__'),
+      supabaseClient.from('employees').delete().neq('id','__none__'),
+      supabaseClient.from('app_users').delete().neq('id','__none__'),
+      supabaseClient.from('assets').delete().neq('id','__none__'),
+      supabaseClient.from('asset_history').delete().neq('id','__none__'),
+    ]);
+    const inserts = [];
+    if(snapshot.categories.length) inserts.push(supabaseClient.from('categories').insert(snapshot.categories.map(name=>({name}))));
+    if(snapshot.locations.length) inserts.push(supabaseClient.from('locations').insert(snapshot.locations.map(name=>({name}))));
+    if(snapshot.employees.length) inserts.push(supabaseClient.from('employees').insert(snapshot.employees));
+    if(snapshot.users.length) inserts.push(supabaseClient.from('app_users').insert(snapshot.users.map(userToRow)));
+    if(snapshot.assets.length) inserts.push(supabaseClient.from('assets').insert(snapshot.assets.map(assetToRow)));
+    if(snapshot.history.length) inserts.push(supabaseClient.from('asset_history').insert(snapshot.history.map(historyToRow)));
+    inserts.push(supabaseClient.from('app_meta').upsert({key:'next_asset_num', value:String(snapshot.nextAssetNum)}));
+    await Promise.all(inserts);
+    cloudStatus = 'connected';
+  }catch(e){
+    cloudStatus = 'offline';
+  }
+  updateCloudBadge();
+  syncInFlight = false;
+  if(syncQueued){ syncQueued = false; syncToSupabase(); }
+}
+function updateCloudBadge(){
+  const el = document.getElementById('cloudBadge');
+  if(!el) return;
+  if(cloudStatus==='connected'){ el.textContent = '● Synced to cloud'; el.style.color = '#8FD9C4'; }
+  else if(cloudStatus==='offline'){ el.textContent = '● Offline (local only)'; el.style.color = '#E3B08C'; }
+  else { el.textContent = ''; }
+}
+
+/* ===================== DATA LAYER ===================== */
+const STORE_KEY = 'depot_asset_inventory_v1';
+const DEFAULT_CATEGORIES = ['IT Equipment','Network Equipment','CCTV','Furniture','Appliances','Kitchen Equipment','Office Equipment','Maintenance Equipment','Other'];
+const DEFAULT_LOCATIONS = ['Main Office','Warehouse','Reception','Room 101','Restaurant','Kitchen','Pool Area','IT Office'];
+const STATUSES = ['Available','Assigned','Under Repair','Missing','Disposed'];
+
+function seedData(){
+  const now = new Date().toISOString();
+  const users = [
+    {id:'U-001', username:'admin', password:'admin123', name:'Admin User', role:'Admin'},
+    {id:'U-002', username:'staff', password:'staff123', name:'Staff Member', role:'Staff'},
+    {id:'U-003', username:'viewer', password:'viewer123', name:'Viewer Account', role:'Viewer'},
+  ];
+  const employees = [
+    {id:'EMP-001', name:'John Dela Cruz', department:'IT Department'},
+    {id:'EMP-002', name:'Maria Santos', department:'Front Office'},
+    {id:'EMP-003', name:'Ana Reyes', department:'Housekeeping'},
+  ];
+  const assets = [
+    {id:'AST-000001', name:'Dell Latitude Laptop', category:'IT Equipment', tag:'', brand:'Dell', model:'Latitude 5420', serial:'DL5420-8891', location:'IT Office', assignedTo:'John Dela Cruz', assignedDept:'IT Department', purchaseDate:'2024-02-10', purchaseCost:'52000', warrantyExpiry:'2027-02-10', status:'Assigned', description:'Primary work laptop.', createdAt: now},
+    {id:'AST-000002', name:'HP LaserJet Printer', category:'Office Equipment', tag:'', brand:'HP', model:'LaserJet Pro M404', serial:'HP404-1123', location:'Main Office', assignedTo:'', assignedDept:'', purchaseDate:'2023-11-05', purchaseCost:'14500', warrantyExpiry:'2025-11-05', status:'Available', description:'', createdAt: now},
+    {id:'AST-000003', name:'Banquet Chair (set of 20)', category:'Furniture', tag:'', brand:'Steelform', model:'BQ-20', serial:'STF-BQ20-04', location:'Restaurant', assignedTo:'', assignedDept:'', purchaseDate:'2022-06-01', purchaseCost:'38000', warrantyExpiry:'', status:'Available', description:'Stackable banquet chairs.', createdAt: now},
+    {id:'AST-000004', name:'CCTV Dome Camera', category:'CCTV', tag:'', brand:'Hikvision', model:'DS-2CE', serial:'HKV-2210-77', location:'Reception', assignedTo:'', assignedDept:'', purchaseDate:'2023-01-20', purchaseCost:'6200', warrantyExpiry:'2026-01-20', status:'Under Repair', description:'Night vision intermittent.', createdAt: now},
+    {id:'AST-000005', name:'Commercial Blender', category:'Kitchen Equipment', tag:'', brand:'Vitamix', model:'VM-Pro750', serial:'VMX-750-19', location:'Kitchen', assignedTo:'', assignedDept:'', purchaseDate:'2021-09-14', purchaseCost:'21000', warrantyExpiry:'', status:'Missing', description:'Last seen during inventory count in March.', createdAt: now},
+  ];
+  const history = assets.map((a,i)=>({id:'H'+(i+1), assetId:a.id, action:'Created', detail:'Asset added to inventory', user:'Admin User', timestamp: now}));
+  return {
+    nextAssetNum: 6,
+    categories: DEFAULT_CATEGORIES.slice(),
+    locations: DEFAULT_LOCATIONS.slice(),
+    employees, assets, history, users,
+    settings: { currentUser:'Admin User', role:'Admin' }
+  };
+}
+
+/* Safe storage wrapper — falls back to in-memory storage if localStorage is blocked
+   (e.g. some browsers restrict it for file:// pages or sandboxed previews) */
+const memoryStore = {};
+let storageAvailable = true;
+try{
+  const testKey = '__depot_test__';
+  localStorage.setItem(testKey, '1');
+  localStorage.removeItem(testKey);
+}catch(e){ storageAvailable = false; }
+const safeStorage = {
+  getItem(key){ try{ return storageAvailable ? localStorage.getItem(key) : (memoryStore[key] ?? null); }catch(e){ return memoryStore[key] ?? null; } },
+  setItem(key, val){ try{ if(storageAvailable){ localStorage.setItem(key, val); return; } }catch(e){} memoryStore[key] = val; },
+  removeItem(key){ try{ if(storageAvailable){ localStorage.removeItem(key); return; } }catch(e){} delete memoryStore[key]; },
+};
+
+function loadDataLocalOnly(){
+  try{
+    const raw = safeStorage.getItem(STORE_KEY);
+    if(!raw) { const d = seedData(); cacheLocally(d); return d; }
+    const parsed = JSON.parse(raw);
+    if(!parsed.users || !parsed.users.length){
+      parsed.users = [
+        {id:'U-001', username:'admin', password:'admin123', name: parsed.settings?.currentUser || 'Admin User', role:'Admin'},
+        {id:'U-002', username:'staff', password:'staff123', name:'Staff Member', role:'Staff'},
+        {id:'U-003', username:'viewer', password:'viewer123', name:'Viewer Account', role:'Viewer'},
+      ];
+      cacheLocally(parsed);
+    }
+    return parsed;
+  }catch(e){ const d = seedData(); cacheLocally(d); return d; }
+}
+/* Save to local storage only, without pushing to the cloud. Used when we've just
+   pulled a snapshot FROM the cloud (nothing new to push back) or as an offline fallback. */
+function cacheLocally(d){ try{ safeStorage.setItem(STORE_KEY, JSON.stringify(d)); }catch(e){} }
+/* Save locally AND push to the cloud. Used for actual user-made changes. */
+function saveData(d){ cacheLocally(d); syncToSupabase(); }
+
+const SESSION_KEY = 'depot_session_username';
+function getSession(){ return safeStorage.getItem(SESSION_KEY); }
+function setSession(username){ safeStorage.setItem(SESSION_KEY, username); }
+function clearSession(){ safeStorage.removeItem(SESSION_KEY); }
+
+/* DATA starts null and is populated by boot(): Supabase is tried first (source of truth
+   shared across devices); only if that's unreachable do we fall back to this browser's
+   local cache/seed data, so a fresh device never overwrites real cloud data. */
+let DATA = null;
+let STATE = { view:'dashboard', assetFilters:{q:'',category:'',location:'',status:''}, sort:{key:'id',dir:1} };
+
+function persist(){ saveData(DATA); }
+
+function logHistory(assetId, action, detail){
+  DATA.history.unshift({ id:'H'+Date.now()+Math.floor(Math.random()*999), assetId, action, detail, user: DATA.settings.currentUser, timestamp: new Date().toISOString() });
+}
+
+function nextAssetId(){
+  const n = DATA.nextAssetNum;
+  DATA.nextAssetNum = n+1;
+  return 'AST-' + String(n).padStart(6,'0');
+}
+
+/* ===================== HELPERS ===================== */
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtDate(s){ if(!s) return '—'; const d = new Date(s); if(isNaN(d)) return s; return d.toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}); }
+function fmtDateTime(s){ const d = new Date(s); return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' · ' + d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}); }
+function fmtMoney(v){ if(v===''||v==null) return '—'; const n = parseFloat(v); if(isNaN(n)) return v; return '₱' + n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function badgeClass(status){
+  return {'Available':'badge-available','Assigned':'badge-assigned','Under Repair':'badge-repair','Missing':'badge-missing','Disposed':'badge-disposed'}[status] || 'badge-available';
+}
+function statusBadge(status){ return `<span class="badge ${badgeClass(status)}"><span class="dot"></span>${esc(status)}</span>`; }
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
+}
+function confirmModal(message, onConfirm, opts){
+  opts = opts || {};
+  openModal(`
+    <div class="overlay" id="overlay">
+      <div class="modal" style="max-width:420px;">
+        <div class="modal-head"><h3>${opts.title || 'Please confirm'}</h3><button class="close-x" id="closeModal">✕</button></div>
+        <div class="modal-body"><p style="margin:0;font-size:14px;line-height:1.5;">${esc(message)}</p></div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" id="cancelModal">Cancel</button>
+          <button class="btn ${opts.danger===false?'btn-primary':'btn-danger'}" id="confirmYes">${opts.confirmLabel || 'Confirm'}</button>
+        </div>
+      </div>
+    </div>
+  `);
+  document.getElementById('closeModal').onclick = closeModal;
+  document.getElementById('cancelModal').onclick = closeModal;
+  document.getElementById('overlay').addEventListener('mousedown', e=>{ if(e.target.id==='overlay') closeModal(); });
+  document.getElementById('confirmYes').onclick = ()=>{ closeModal(); onConfirm(); };
+}
+function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
+function openModal(html){ document.getElementById('modalRoot').innerHTML = html; }
+function download(filename, content, type){
+  const blob = new Blob([content], {type});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+function csvEscape(v){ v = String(v==null?'':v); if(/[",\n]/.test(v)) return '"'+v.replace(/"/g,'""')+'"'; return v; }
+function assetsToCSV(list){
+  const cols = ['id','name','category','brand','model','serial','location','assignedTo','status','purchaseDate','purchaseCost'];
+  const header = ['Asset ID','Name','Category','Brand','Model','Serial Number','Location','Assigned To','Status','Purchase Date','Purchase Cost'];
+  const lines = [header.join(',')];
+  list.forEach(a=> lines.push(cols.map(c=>csvEscape(a[c])).join(',')) );
+  return lines.join('\n');
+}
+const IMPORT_TEMPLATE_HEADERS = ['Asset Name','Category','Asset Tag','Brand','Model','Serial Number','Location','Assigned To','Purchase Date','Purchase Cost','Warranty Expiry','Status','Description'];
+function normKey(k){ return String(k||'').trim().toLowerCase().replace(/[^a-z0-9]/g,''); }
+const IMPORT_FIELD_MAP = {
+  assetname:'name', name:'name',
+  category:'category',
+  assettag:'tag', tag:'tag',
+  brand:'brand',
+  model:'model',
+  serialnumber:'serial', serial:'serial',
+  location:'location',
+  assignedto:'assignedTo',
+  purchasedate:'purchaseDate',
+  purchasecost:'purchaseCost',
+  warrantyexpiry:'warrantyExpiry',
+  status:'status',
+  description:'description',
+};
+function importAssetsFromRows(rows){
+  let added = 0, skipped = 0;
+  const newCats = new Set(), newLocs = new Set();
+  rows.forEach(row=>{
+    const rec = {};
+    Object.keys(row).forEach(k=>{ const mapped = IMPORT_FIELD_MAP[normKey(k)]; if(mapped) rec[mapped] = String(row[k]==null?'':row[k]).trim(); });
+    if(!rec.name){ skipped++; return; }
+    if(!rec.category) rec.category = 'Other';
+    if(!DATA.categories.includes(rec.category)){ DATA.categories.push(rec.category); newCats.add(rec.category); }
+    if(rec.location && !DATA.locations.includes(rec.location)){ DATA.locations.push(rec.location); newLocs.add(rec.location); }
+    if(!STATUSES.includes(rec.status)) rec.status = 'Available';
+    const id = nextAssetId();
+    const asset = {
+      id, name:rec.name, category:rec.category, tag:rec.tag||'', brand:rec.brand||'', model:rec.model||'',
+      serial:rec.serial||'', location:rec.location||'', assignedTo:rec.assignedTo||'', assignedDept:'',
+      purchaseDate:rec.purchaseDate||'', purchaseCost:rec.purchaseCost||'', warrantyExpiry:rec.warrantyExpiry||'',
+      status:rec.status, description:rec.description||'', photo:null, createdAt:new Date().toISOString()
+    };
+    DATA.assets.unshift(asset);
+    logHistory(id, 'Created', 'Imported from file');
+    added++;
+  });
+  persist();
+  let msg = `Imported ${added} asset${added===1?'':'s'}`;
+  if(skipped) msg += `, skipped ${skipped} (missing name)`;
+  showToast(msg);
+  render();
+}
+function handleImportFile(file){
+  if(typeof XLSX === 'undefined'){
+    showToast('Import library failed to load — please refresh the page and try again.');
+    return;
+  }
+  const isCSV = /\.csv$/i.test(file.name);
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      let rows;
+      if(isCSV){
+        const wb = XLSX.read(reader.result, {type:'string'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+      } else {
+        const wb = XLSX.read(reader.result, {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+      }
+      if(!rows.length){ showToast('No rows found in file'); return; }
+      importAssetsFromRows(rows);
+    }catch(e){ showToast('Could not read file — check the format'); }
+  };
+  if(isCSV) reader.readAsText(file); else reader.readAsArrayBuffer(file);
+}
+function exportXLSX(list, filename, sheetName){
+  if(typeof XLSX === 'undefined'){
+    showToast('Excel export library failed to load — try CSV export instead.');
+    return false;
+  }
+  const rows = list.map(a=>({
+    'Asset ID':a.id,'Name':a.name,'Category':a.category,'Brand':a.brand,'Model':a.model,
+    'Serial Number':a.serial,'Location':a.location,'Assigned To':a.assignedTo,'Status':a.status,
+    'Purchase Date':a.purchaseDate,'Purchase Cost':a.purchaseCost
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Assets');
+  XLSX.writeFile(wb, filename);
+  return true;
+}
+function downloadImportTemplate(){
+  if(typeof XLSX === 'undefined'){
+    showToast('Template export library failed to load — try again once the page fully loads.');
+    return;
+  }
+  const example = ['Sample Office Chair','Furniture','','Herman Miller','Aeron','HM-AER-001','Main Office','','2024-01-15','18500','','Available','Example row — delete before importing'];
+  const ws = XLSX.utils.aoa_to_sheet([IMPORT_TEMPLATE_HEADERS, example]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Assets');
+  XLSX.writeFile(wb, 'asset-import-template.xlsx');
+}
+
+/* ===================== NAV ===================== */
+const NAV_ITEMS = [
+  {key:'dashboard', label:'Dashboard', icon:'dashboard'},
+  {key:'assets', label:'Assets', icon:'assets'},
+  {key:'categories', label:'Categories', icon:'categories'},
+  {key:'locations', label:'Locations', icon:'locations'},
+  {key:'employees', label:'Employees', icon:'employees'},
+  {key:'reports', label:'Reports', icon:'reports'},
+  {key:'users', label:'Users', icon:'users'},
+  {key:'settings', label:'Settings', icon:'settings'},
+];
+const ROLE_NAV_ACCESS = {
+  Admin: ['dashboard','assets','categories','locations','employees','reports','users','settings'],
+  Staff: ['dashboard','assets','categories','locations','employees','reports'],
+  Viewer: ['dashboard','assets','reports'],
+};
+function allowedNavKeys(){ return ROLE_NAV_ACCESS[DATA.settings.role] || ROLE_NAV_ACCESS.Viewer; }
+function renderNav(){
+  const nav = document.getElementById('nav');
+  const allowed = allowedNavKeys();
+  nav.innerHTML = NAV_ITEMS.filter(item=>allowed.includes(item.key)).map(item=>`
+    <button class="nav-item ${STATE.view===item.key?'active':''}" data-nav="${item.key}">
+      ${ICONS[item.icon]}<span>${item.label}</span>
+    </button>`).join('');
+  nav.querySelectorAll('[data-nav]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ STATE.view = btn.dataset.nav; document.getElementById('sidebar').classList.remove('open'); render(); });
+  });
+}
+
+/* ===================== DASHBOARD ===================== */
+function viewDashboard(){
+  const counts = { total: DATA.assets.length, Assigned:0, Available:0, 'Under Repair':0, Missing:0 };
+  DATA.assets.forEach(a=>{ if(counts[a.status]!==undefined) counts[a.status]++; });
+  const stat = (num,label,color)=>`
+    <div class="stat-card">
+      <div class="bar" style="background:${color}"></div>
+      <div class="num">${num}</div>
+      <div class="lbl">${label}</div>
+    </div>`;
+  const recent = DATA.history.slice(0,8);
+  return `
+    <div class="section-title">Good day, ${esc(DATA.settings.currentUser.split(' ')[0])}</div>
+    <div class="section-desc">Here's what's happening across your inventory today.</div>
+    <div class="stat-row">
+      ${stat(counts.total,'Total Assets','#2B6E63')}
+      ${stat(counts.Assigned,'Assigned','#3A5A8C')}
+      ${stat(counts.Available,'Available','#2B6E63')}
+      ${stat(counts['Under Repair'],'Under Repair','#C15A2E')}
+      ${stat(counts.Missing,'Missing','#A83B3B')}
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Recent activity</h2><button class="btn btn-ghost btn-sm" data-go="assets">View all assets</button></div>
+      <div style="padding:6px 18px 14px 18px;">
+        ${recent.length? recent.map(h=>`
+          <div class="activity-item">
+            <div class="activity-dot"></div>
+            <div>
+              <div class="activity-text"><b>${esc(h.assetId)}</b> — ${esc(h.action)}${h.detail?': '+esc(h.detail):''}</div>
+              <div class="activity-time">${fmtDateTime(h.timestamp)} · ${esc(h.user)}</div>
+            </div>
+          </div>`).join('') : `<div class="empty-state"><div class="big">📋</div>No activity yet.</div>`}
+      </div>
+    </div>
+  `;
+}
+
+/* ===================== ASSETS LIST ===================== */
+function getFilteredAssets(){
+  const f = STATE.assetFilters;
+  let list = DATA.assets.filter(a=>{
+    if(f.category && a.category!==f.category) return false;
+    if(f.location && a.location!==f.location) return false;
+    if(f.status && a.status!==f.status) return false;
+    if(f.q){
+      const q = f.q.toLowerCase();
+      const hay = [a.id,a.name,a.tag,a.serial,a.brand,a.model,a.location,a.assignedTo].join(' ').toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  const {key,dir} = STATE.sort;
+  list.sort((a,b)=>{
+    const av = (a[key]||'').toString().toLowerCase(), bv=(b[key]||'').toString().toLowerCase();
+    if(av<bv) return -1*dir; if(av>bv) return 1*dir; return 0;
+  });
+  return list;
+}
+function viewAssets(){
+  const list = getFilteredAssets();
+  const cats = DATA.categories, locs = DATA.locations;
+  const sortArrow = k => STATE.sort.key===k ? (STATE.sort.dir===1?'▲':'▼') : '';
+  return `
+    <div class="section-title">Assets</div>
+    <div class="section-desc">${DATA.assets.length} assets in inventory.</div>
+    <div class="row-between">
+      <div class="filter-bar">
+        <input type="text" id="assetSearch" placeholder="Search assets…" value="${esc(STATE.assetFilters.q)}" style="min-width:180px;">
+        <select id="filterCategory"><option value="">All categories</option>${cats.map(c=>`<option ${STATE.assetFilters.category===c?'selected':''}>${esc(c)}</option>`).join('')}</select>
+        <select id="filterLocation"><option value="">All locations</option>${locs.map(l=>`<option ${STATE.assetFilters.location===l?'selected':''}>${esc(l)}</option>`).join('')}</select>
+        <select id="filterStatus"><option value="">All statuses</option>${STATUSES.map(s=>`<option ${STATE.assetFilters.status===s?'selected':''}>${esc(s)}</option>`).join('')}</select>
+      </div>
+      <div class="chip-row no-print">
+        <button class="btn btn-ghost" id="downloadTemplateBtn">Template</button>
+        <label class="btn btn-ghost" style="margin:0;">Import<input type="file" id="importAssetsFile" accept=".csv,.xlsx,.xls" style="display:none;"></label>
+        <button class="btn btn-ghost" id="exportAssetsBtn">Export</button>
+        <button class="btn btn-primary" id="addAssetBtn">${ICONS.plus}Add Asset</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th data-sort="id">Asset ID <span class="sort">${sortArrow('id')}</span></th>
+          <th data-sort="name">Name <span class="sort">${sortArrow('name')}</span></th>
+          <th data-sort="category">Category <span class="sort">${sortArrow('category')}</span></th>
+          <th data-sort="location">Location <span class="sort">${sortArrow('location')}</span></th>
+          <th data-sort="assignedTo">Assigned To <span class="sort">${sortArrow('assignedTo')}</span></th>
+          <th data-sort="status">Status <span class="sort">${sortArrow('status')}</span></th>
+          <th></th>
+        </tr></thead>
+        <tbody>
+        ${list.length ? list.map(a=>`
+          <tr>
+            <td class="id-cell">${esc(a.id)}</td>
+            <td>${esc(a.name)}</td>
+            <td>${esc(a.category)}</td>
+            <td>${esc(a.location)||'—'}</td>
+            <td>${esc(a.assignedTo)||'—'}</td>
+            <td>${statusBadge(a.status)}</td>
+            <td>
+              <div class="row-actions">
+                <button class="icon-btn" data-view="${a.id}" title="View">${ICONS.eye}</button>
+                <button class="icon-btn" data-edit="${a.id}" title="Edit">${ICONS.edit}</button>
+                <button class="icon-btn" data-delete="${a.id}" title="Archive/Delete">${ICONS.trash}</button>
+              </div>
+            </td>
+          </tr>`).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="big">📦</div>No assets match your filters.</div></td></tr>`}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  `;
+}
+
+/* ===================== ASSET FORM (Add/Edit) ===================== */
+function assetFormModal(existing){
+  const a = existing || {name:'',category:DATA.categories[0]||'',tag:'',brand:'',model:'',serial:'',location:DATA.locations[0]||'',assignedTo:'',assignedDept:'',purchaseDate:'',purchaseCost:'',warrantyExpiry:'',status:'Available',description:''};
+  const isEdit = !!existing;
+  const employeeOptions = DATA.employees.map(e=>`<option value="${esc(e.name)}" ${a.assignedTo===e.name?'selected':''}>${esc(e.name)}</option>`).join('');
+  openModal(`
+    <div class="overlay" id="overlay">
+      <div class="modal wide">
+        <div class="modal-head">
+          <h3>${isEdit? 'Edit Asset — '+esc(a.id) : 'Add Asset'}</h3>
+          <button class="close-x" id="closeModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <form id="assetForm">
+            <div class="field-grid">
+              <div class="field"><label>Asset Name <span class="req">*</span></label><input required name="name" value="${esc(a.name)}" placeholder="e.g. Dell Latitude Laptop"></div>
+              <div class="field"><label>Category <span class="req">*</span></label>
+                <select required name="category">${DATA.categories.map(c=>`<option ${a.category===c?'selected':''}>${esc(c)}</option>`).join('')}</select>
+              </div>
+              <div class="field"><label>Asset Tag</label><input name="tag" value="${esc(a.tag)}" placeholder="Optional custom tag"></div>
+              <div class="field"><label>Brand</label><input name="brand" value="${esc(a.brand)}"></div>
+              <div class="field"><label>Model</label><input name="model" value="${esc(a.model)}"></div>
+              <div class="field"><label>Serial Number</label><input name="serial" value="${esc(a.serial)}"></div>
+              <div class="field"><label>Location</label>
+                <select name="location"><option value="">—</option>${DATA.locations.map(l=>`<option ${a.location===l?'selected':''}>${esc(l)}</option>`).join('')}</select>
+              </div>
+              <div class="field"><label>Assigned To</label>
+                <select name="assignedTo"><option value="">— Unassigned —</option>${employeeOptions}</select>
+              </div>
+              <div class="field"><label>Purchase Date</label><input type="date" name="purchaseDate" value="${esc(a.purchaseDate)}"></div>
+              <div class="field"><label>Purchase Cost</label><input type="number" step="0.01" name="purchaseCost" value="${esc(a.purchaseCost)}" placeholder="0.00"></div>
+              <div class="field"><label>Warranty Expiry</label><input type="date" name="warrantyExpiry" value="${esc(a.warrantyExpiry)}"></div>
+              <div class="field"><label>Status</label>
+                <select name="status">${STATUSES.map(s=>`<option ${a.status===s?'selected':''}>${esc(s)}</option>`).join('')}</select>
+              </div>
+              <div class="field full"><label>Description</label><textarea name="description" placeholder="Notes about condition, accessories, etc.">${esc(a.description)}</textarea></div>
+              <div class="field full"><label>Asset Photo</label><input type="file" name="photo" accept="image/*"></div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" id="cancelModal">Cancel</button>
+          <button class="btn btn-primary" id="saveAsset">${isEdit? 'Save Changes':'Add Asset'}</button>
+        </div>
+      </div>
+    </div>
+  `);
+  document.getElementById('closeModal').onclick = closeModal;
+  document.getElementById('cancelModal').onclick = closeModal;
+  document.getElementById('overlay').addEventListener('mousedown', e=>{ if(e.target.id==='overlay') closeModal(); });
+
+  document.getElementById('saveAsset').onclick = ()=>{
+    const form = document.getElementById('assetForm');
+    if(!form.reportValidity()) return;
+    const fd = new FormData(form);
+    const vals = Object.fromEntries(fd.entries());
+    const file = fd.get('photo');
+
+    const finish = (photoData)=>{
+      if(isEdit){
+        const idx = DATA.assets.findIndex(x=>x.id===a.id);
+        const before = DATA.assets[idx];
+        const updated = {...before, ...vals, photo: photoData || before.photo};
+        DATA.assets[idx] = updated;
+        const changes = [];
+        if(before.status!==updated.status) changes.push(`status → ${updated.status}`);
+        if(before.location!==updated.location) changes.push(`location → ${updated.location}`);
+        if(before.assignedTo!==updated.assignedTo) changes.push(`assigned to ${updated.assignedTo||'Unassigned'}`);
+        logHistory(a.id, 'Edited', changes.length? changes.join(', ') : 'Details updated');
+        showToast('Asset updated');
+      } else {
+        const id = nextAssetId();
+        const asset = {id, ...vals, photo: photoData || null, createdAt: new Date().toISOString()};
+        DATA.assets.unshift(asset);
+        logHistory(id, 'Created', `Added as ${vals.status}`);
+        showToast('Asset added: '+id);
+      }
+      persist(); closeModal(); render();
+    };
+
+    if(file && file.size){
+      const reader = new FileReader();
+      reader.onload = ()=> finish(reader.result);
+      reader.readAsDataURL(file);
+    } else finish(null);
+  };
+}
+
+/* ===================== ASSET VIEW / QR / HISTORY ===================== */
+function assetViewModal(id){
+  const a = DATA.assets.find(x=>x.id===id);
+  if(!a) return;
+  const hist = DATA.history.filter(h=>h.assetId===id);
+  openModal(`
+    <div class="overlay" id="overlay">
+      <div class="modal wide">
+        <div class="modal-head">
+          <h3>${esc(a.name)} <span class="mono" style="font-size:12.5px;color:var(--ink-soft);">— ${esc(a.id)}</span></h3>
+          <button class="close-x" id="closeModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:18px;">
+            <div class="qr-box" id="qrBox">
+              <div id="qrCanvas"></div>
+              <div class="mono" style="font-size:12px;">${esc(a.id)}</div>
+              <button class="btn btn-ghost btn-sm" id="printQr">Print QR Code</button>
+            </div>
+            <div style="flex:1;min-width:260px;">
+              <div class="detail-grid">
+                <div class="detail-item"><div class="k">Status</div><div class="v">${statusBadge(a.status)}</div></div>
+                <div class="detail-item"><div class="k">Category</div><div class="v">${esc(a.category)}</div></div>
+                <div class="detail-item"><div class="k">Brand</div><div class="v">${esc(a.brand)||'—'}</div></div>
+                <div class="detail-item"><div class="k">Model</div><div class="v">${esc(a.model)||'—'}</div></div>
+                <div class="detail-item"><div class="k">Serial Number</div><div class="v">${esc(a.serial)||'—'}</div></div>
+                <div class="detail-item"><div class="k">Asset Tag</div><div class="v">${esc(a.tag)||'—'}</div></div>
+                <div class="detail-item"><div class="k">Location</div><div class="v">${esc(a.location)||'—'}</div></div>
+                <div class="detail-item"><div class="k">Assigned To</div><div class="v">${esc(a.assignedTo)||'Unassigned'}</div></div>
+                <div class="detail-item"><div class="k">Purchase Date</div><div class="v">${fmtDate(a.purchaseDate)}</div></div>
+                <div class="detail-item"><div class="k">Purchase Cost</div><div class="v">${fmtMoney(a.purchaseCost)}</div></div>
+                <div class="detail-item"><div class="k">Warranty Expiry</div><div class="v">${fmtDate(a.warrantyExpiry)}</div></div>
+              </div>
+              ${a.description? `<div style="margin-top:14px;"><div class="detail-item"><div class="k">Description</div><div class="v">${esc(a.description)}</div></div></div>`:''}
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>History</h2></div>
+            <div style="padding:6px 18px 14px 18px;">
+              ${hist.length? hist.map(h=>`
+                <div class="activity-item">
+                  <div class="activity-dot"></div>
+                  <div><div class="activity-text"><b>${esc(h.action)}</b>${h.detail?': '+esc(h.detail):''}</div><div class="activity-time">${fmtDateTime(h.timestamp)} · ${esc(h.user)}</div></div>
+                </div>`).join('') : '<div class="empty-state">No history yet.</div>'}
+            </div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" id="closeModal2">Close</button>
+        </div>
+      </div>
+    </div>
+  `);
+  document.getElementById('closeModal').onclick = closeModal;
+  document.getElementById('closeModal2').onclick = closeModal;
+  document.getElementById('overlay').addEventListener('mousedown', e=>{ if(e.target.id==='overlay') closeModal(); });
+
+  let qrOk = true;
+  try{
+    if(typeof QRCode === 'undefined') throw new Error('QRCode library not loaded');
+    new QRCode(document.getElementById('qrCanvas'), {
+      text: JSON.stringify({id:a.id,name:a.name,tag:a.tag,brand:a.brand,model:a.model,serial:a.serial,location:a.location,assignedTo:a.assignedTo,status:a.status}),
+      width:130, height:130, colorDark:'#1D2624', colorLight:'#ffffff'
+    });
+  }catch(e){
+    qrOk = false;
+    document.getElementById('qrCanvas').innerHTML = '<div style="width:130px;height:130px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:11.5px;color:var(--ink-soft);border:1px dashed var(--line);border-radius:8px;padding:8px;">QR code unavailable — check your connection</div>';
+  }
+
+  document.getElementById('printQr').onclick = ()=>{
+    const qrHtml = document.getElementById('qrCanvas').innerHTML;
+    const w = window.open('', '_blank', 'width=420,height=520');
+    w.document.write(`
+      <html><head><title>${esc(a.id)}</title>
+      <style>
+        body{font-family:sans-serif;text-align:center;padding:40px;}
+        .id{font-family:monospace;font-size:16px;font-weight:700;margin-top:14px;}
+        .name{font-size:14px;margin-top:4px;color:#333;}
+      </style></head>
+      <body onload="window.print()">
+        ${qrHtml}
+        <div class="id">${esc(a.id)}</div>
+        <div class="name">${esc(a.name)}</div>
+      </body></html>`);
+    w.document.close();
+  };
+}
+
+/* ===================== CATEGORIES / LOCATIONS ===================== */
+function simpleListView(kind){
+  const isCategories = kind==='categories';
+  const items = isCategories ? DATA.categories : DATA.locations;
+  const countFn = name => DATA.assets.filter(a => isCategories ? a.category===name : a.location===name).length;
+  return `
+    <div class="section-title">${isCategories?'Categories':'Locations'}</div>
+    <div class="section-desc">${isCategories? 'Group assets by type.' : 'Track where each asset lives.'}</div>
+    <div class="row-between">
+      <div class="chip-row" style="flex:1;">
+        <input type="text" id="newItemInput" placeholder="${isCategories?'New category name':'New location name'}" style="padding:9px 12px;border:1px solid var(--line);border-radius:8px;min-width:220px;">
+      </div>
+      <button class="btn btn-primary" id="addItemBtn">${ICONS.plus}Add</button>
+    </div>
+    <div class="panel">
+      <div class="list-simple">
+        ${items.length? items.map(name=>`
+          <div class="li">
+            <div class="name">${esc(name)}</div>
+            <div class="count">${countFn(name)} asset${countFn(name)===1?'':'s'}</div>
+            <button class="icon-btn" data-remove="${esc(name)}" title="Remove">${ICONS.trash}</button>
+          </div>`).join('') : `<div class="empty-state"><div class="big">🗂️</div>None yet — add your first one above.</div>`}
+      </div>
+    </div>
+  `;
+}
+
+/* ===================== EMPLOYEES ===================== */
+function viewEmployees(){
+  const countFn = name => DATA.assets.filter(a=>a.assignedTo===name).length;
+  return `
+    <div class="section-title">Employees</div>
+    <div class="section-desc">People assets can be assigned to.</div>
+    <div class="row-between">
+      <div class="chip-row">
+        <input type="text" id="empName" placeholder="Full name" style="padding:9px 12px;border:1px solid var(--line);border-radius:8px;">
+        <input type="text" id="empDept" placeholder="Department" style="padding:9px 12px;border:1px solid var(--line);border-radius:8px;">
+      </div>
+      <button class="btn btn-primary" id="addEmpBtn">${ICONS.plus}Add Employee</button>
+    </div>
+    <div class="panel">
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Department</th><th>Assets Assigned</th><th></th></tr></thead>
+        <tbody>
+        ${DATA.employees.length? DATA.employees.map(e=>`
+          <tr>
+            <td style="font-weight:600;">${esc(e.name)}</td>
+            <td>${esc(e.department)||'—'}</td>
+            <td>${countFn(e.name)}</td>
+            <td><div class="row-actions"><button class="icon-btn" data-remove-emp="${esc(e.id)}" title="Remove">${ICONS.trash}</button></div></td>
+          </tr>`).join('') : `<tr><td colspan="4"><div class="empty-state">No employees yet.</div></td></tr>`}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  `;
+}
+
+/* ===================== REPORTS ===================== */
+const REPORTS = [
+  {key:'all', label:'All Assets', filter: a=>true},
+  {key:'category', label:'Assets by Category', filter: a=>true, groupBy:'category'},
+  {key:'location', label:'Assets by Location', filter: a=>true, groupBy:'location'},
+  {key:'employee', label:'Assets by Employee', filter: a=>!!a.assignedTo, groupBy:'assignedTo'},
+  {key:'missing', label:'Missing Assets', filter: a=>a.status==='Missing'},
+  {key:'repair', label:'Assets Under Repair', filter: a=>a.status==='Under Repair'},
+];
+function viewReports(){
+  const active = STATE.reportKey || 'all';
+  const rep = REPORTS.find(r=>r.key===active);
+  const list = DATA.assets.filter(rep.filter);
+  let bodyHtml = '';
+  if(rep.groupBy){
+    const groups = {};
+    list.forEach(a=>{ const k = a[rep.groupBy] || 'Unassigned'; (groups[k]=groups[k]||[]).push(a); });
+    bodyHtml = Object.keys(groups).sort().map(g=>`
+      <div style="margin-bottom:18px;">
+        <div style="font-weight:700;font-size:13.5px;margin:14px 0 6px 0;color:var(--teal-dark);">${esc(g)} <span style="color:var(--ink-soft);font-weight:500;">(${groups[g].length})</span></div>
+        ${assetsTableHtml(groups[g])}
+      </div>`).join('');
+  } else {
+    bodyHtml = assetsTableHtml(list);
+  }
+  return `
+    <div class="section-title">Reports</div>
+    <div class="section-desc">Generate a quick view, then export or print.</div>
+    <div class="row-between">
+      <div class="filter-bar">
+        ${REPORTS.map(r=>`<button class="btn ${active===r.key?'btn-primary':'btn-ghost'} btn-sm" data-report="${r.key}">${r.label}</button>`).join('')}
+      </div>
+      <div class="chip-row no-print">
+        <button class="btn btn-ghost btn-sm" id="exportCsv">Export CSV</button>
+        <button class="btn btn-ghost btn-sm" id="exportXlsx">Export Excel</button>
+        <button class="btn btn-ghost btn-sm" id="printReport">Print / Save PDF</button>
+      </div>
+    </div>
+    <div class="panel" id="reportPanel">
+      <div class="panel-head"><h2>${rep.label} <span style="color:var(--ink-soft);font-weight:500;">(${list.length})</span></h2></div>
+      <div style="padding:8px 0;">
+        ${list.length ? bodyHtml : `<div class="empty-state"><div class="big">📄</div>No assets in this report.</div>`}
+      </div>
+    </div>
+  `;
+}
+function assetsTableHtml(list){
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Asset ID</th><th>Name</th><th>Category</th><th>Location</th><th>Assigned To</th><th>Status</th><th>Cost</th></tr></thead>
+    <tbody>${list.map(a=>`
+      <tr>
+        <td class="id-cell">${esc(a.id)}</td><td>${esc(a.name)}</td><td>${esc(a.category)}</td>
+        <td>${esc(a.location)||'—'}</td><td>${esc(a.assignedTo)||'—'}</td><td>${statusBadge(a.status)}</td>
+        <td>${fmtMoney(a.purchaseCost)}</td>
+      </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+/* ===================== USERS ===================== */
+const ROLE_PERMS = {
+  Admin: ['Add / edit / delete assets','Manage categories & locations','Manage users','View & export all reports'],
+  Staff: ['View assets','Add / update assets','Assign assets','Scan QR codes'],
+  Viewer: ['View assets only'],
+};
+function viewUsers(){
+  return `
+    <div class="section-title">Users</div>
+    <div class="section-desc">Accounts that can log in to this system.</div>
+    <div class="panel" style="margin-bottom:18px;">
+      <div class="panel-head"><h2>Current session</h2></div>
+      <div style="padding:16px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <div style="width:42px;height:42px;border-radius:50%;background:var(--teal);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;">${esc(DATA.settings.currentUser.slice(0,1))}</div>
+        <div>
+          <div style="font-weight:600;">${esc(DATA.settings.currentUser)}</div>
+          <span class="role-pill">${esc(DATA.settings.role)}</span>
+        </div>
+      </div>
+    </div>
+    <div class="row-between">
+      <div></div>
+      <button class="btn btn-primary" id="addUserBtn">${ICONS.plus}Add User</button>
+    </div>
+    <div class="panel" style="margin-bottom:18px;">
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Username</th><th>Role</th><th></th></tr></thead>
+        <tbody>
+        ${DATA.users.map(u=>`
+          <tr>
+            <td style="font-weight:600;">${esc(u.name)}</td>
+            <td class="mono">${esc(u.username)}</td>
+            <td><span class="role-pill">${esc(u.role)}</span></td>
+            <td><div class="row-actions">
+              <button class="icon-btn" data-edit-user="${esc(u.id)}" title="Edit">${ICONS.edit}</button>
+              <button class="icon-btn" data-remove-user="${esc(u.id)}" title="Remove">${ICONS.trash}</button>
+            </div></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
+      ${Object.entries(ROLE_PERMS).map(([role,perms])=>`
+        <div class="panel">
+          <div class="panel-head"><h2>${role}</h2></div>
+          <div style="padding:14px 18px;">
+            ${perms.map(p=>`<div style="font-size:13px;padding:5px 0;">• ${p}</div>`).join('')}
+          </div>
+        </div>`).join('')}
+    </div>
+  `;
+}
+function userFormModal(existing){
+  const u = existing || {name:'',username:'',password:'',role:'Staff'};
+  const isEdit = !!existing;
+  openModal(`
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <div class="modal-head"><h3>${isEdit?'Edit User':'Add User'}</h3><button class="close-x" id="closeModal">✕</button></div>
+        <div class="modal-body">
+          <form id="userForm">
+            <div class="field"><label>Full Name <span class="req">*</span></label><input required name="name" value="${esc(u.name)}"></div>
+            <div class="field"><label>Username <span class="req">*</span></label><input required name="username" value="${esc(u.username)}"></div>
+            <div class="field"><label>Password ${isEdit?'<span class=\"helper\">(leave blank to keep current)</span>':'<span class=\"req\">*</span>'}</label><input type="password" name="password" ${isEdit?'':'required'}></div>
+            <div class="field"><label>Role</label><select name="role">${Object.keys(ROLE_PERMS).map(r=>`<option ${u.role===r?'selected':''}>${r}</option>`).join('')}</select></div>
+          </form>
+        </div>
+        <div class="modal-foot"><button class="btn btn-ghost" id="cancelModal">Cancel</button><button class="btn btn-primary" id="saveUser">${isEdit?'Save Changes':'Add User'}</button></div>
+      </div>
+    </div>
+  `);
+  document.getElementById('closeModal').onclick = closeModal;
+  document.getElementById('cancelModal').onclick = closeModal;
+  document.getElementById('overlay').addEventListener('mousedown', e=>{ if(e.target.id==='overlay') closeModal(); });
+  document.getElementById('saveUser').onclick = ()=>{
+    const form = document.getElementById('userForm');
+    if(!form.reportValidity()) return;
+    const fd = new FormData(form);
+    const vals = Object.fromEntries(fd.entries());
+    if(DATA.users.some(x=> x.username.toLowerCase()===vals.username.toLowerCase() && (!isEdit || x.id!==u.id))){
+      showToast('That username is already taken'); return;
+    }
+    if(isEdit){
+      const idx = DATA.users.findIndex(x=>x.id===u.id);
+      DATA.users[idx] = {...DATA.users[idx], name:vals.name, username:vals.username, role:vals.role, password: vals.password? vals.password : DATA.users[idx].password};
+      showToast('User updated');
+    } else {
+      DATA.users.push({id:'U-'+Date.now(), name:vals.name, username:vals.username, password:vals.password, role:vals.role});
+      showToast('User added');
+    }
+    persist(); closeModal(); render();
+  };
+}
+
+/* ===================== SETTINGS ===================== */
+function viewSettings(){
+  return `
+    <div class="section-title">Settings</div>
+    <div class="section-desc">Basic preferences for this workspace.</div>
+    <div class="panel" style="margin-bottom:18px;">
+      <div class="panel-head"><h2>Your profile</h2></div>
+      <div style="padding:18px;">
+        <div class="field-grid">
+          <div class="field"><label>Display name</label><input id="settingsName" value="${esc(DATA.settings.currentUser)}"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="saveSettings">Save changes</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Data</h2></div>
+      <div style="padding:18px;">
+        <p class="helper" style="margin:0 0 12px 0;">Your inventory data is stored as JSON in this browser. Back it up regularly or move it to another device using export/import.</p>
+        <div class="chip-row">
+          <button class="btn btn-ghost btn-sm" id="exportJson">Export all data (.json)</button>
+          <label class="btn btn-ghost btn-sm" style="margin:0;">Import data (.json)<input type="file" id="importJson" accept="application/json" style="display:none;"></label>
+          <button class="btn btn-danger btn-sm" id="resetData">Reset to sample data</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ===================== RENDER / ROUTER ===================== */
+const PAGE_TITLES = {dashboard:'Dashboard',assets:'Assets',categories:'Categories',locations:'Locations',employees:'Employees',reports:'Reports',users:'Users',settings:'Settings'};
+
+function render(){
+  if(!allowedNavKeys().includes(STATE.view)) STATE.view = 'dashboard';
+  renderNav();
+  document.getElementById('pageTitle').textContent = PAGE_TITLES[STATE.view];
+  document.getElementById('sidebarUser').textContent = DATA.settings.currentUser;
+  document.getElementById('sidebarRole').textContent = DATA.settings.role==='Admin'?'Administrator':DATA.settings.role;
+  document.getElementById('logoutBtn').onclick = logout;
+  updateCloudBadge();
+  const content = document.getElementById('content');
+  if(STATE.view==='dashboard') content.innerHTML = viewDashboard();
+  else if(STATE.view==='assets') content.innerHTML = viewAssets();
+  else if(STATE.view==='categories') content.innerHTML = simpleListView('categories');
+  else if(STATE.view==='locations') content.innerHTML = simpleListView('locations');
+  else if(STATE.view==='employees') content.innerHTML = viewEmployees();
+  else if(STATE.view==='reports') content.innerHTML = viewReports();
+  else if(STATE.view==='users') content.innerHTML = viewUsers();
+  else if(STATE.view==='settings') content.innerHTML = viewSettings();
+  wireEvents();
+}
+
+function wireEvents(){
+  document.querySelectorAll('[data-go]').forEach(b=> b.addEventListener('click', ()=>{ STATE.view=b.dataset.go; render(); }));
+
+  if(STATE.view==='assets'){
+    document.getElementById('addAssetBtn').onclick = ()=> assetFormModal(null);
+    document.getElementById('downloadTemplateBtn').onclick = downloadImportTemplate;
+    document.getElementById('exportAssetsBtn').onclick = ()=> exportXLSX(getFilteredAssets(), 'assets-export.xlsx', 'Assets');
+    document.getElementById('importAssetsFile').onchange = e=>{
+      const file = e.target.files[0]; if(!file) return;
+      handleImportFile(file);
+      e.target.value = '';
+    };
+    document.getElementById('assetSearch').oninput = e=>{ STATE.assetFilters.q=e.target.value; render2AssetsOnly(); };
+    document.getElementById('filterCategory').onchange = e=>{ STATE.assetFilters.category=e.target.value; render2AssetsOnly(); };
+    document.getElementById('filterLocation').onchange = e=>{ STATE.assetFilters.location=e.target.value; render2AssetsOnly(); };
+    document.getElementById('filterStatus').onchange = e=>{ STATE.assetFilters.status=e.target.value; render2AssetsOnly(); };
+    document.querySelectorAll('[data-sort]').forEach(th=> th.addEventListener('click', ()=>{
+      const k = th.dataset.sort;
+      if(STATE.sort.key===k) STATE.sort.dir *= -1; else { STATE.sort.key=k; STATE.sort.dir=1; }
+      render2AssetsOnly();
+    }));
+    document.querySelectorAll('[data-view]').forEach(b=> b.addEventListener('click', ()=> assetViewModal(b.dataset.view)));
+    document.querySelectorAll('[data-edit]').forEach(b=> b.addEventListener('click', ()=> assetFormModal(DATA.assets.find(a=>a.id===b.dataset.edit))));
+    document.querySelectorAll('[data-delete]').forEach(b=> b.addEventListener('click', ()=>{
+      const id = b.dataset.delete;
+      confirmModal(`Archive/delete ${id}? This cannot be undone.`, ()=>{
+        DATA.assets = DATA.assets.filter(a=>a.id!==id);
+        logHistory(id, 'Disposed', 'Removed from inventory');
+        persist(); showToast('Asset removed'); render();
+      }, {title:'Remove asset', confirmLabel:'Delete'});
+    }));
+  }
+
+  if(STATE.view==='categories' || STATE.view==='locations'){
+    const isCat = STATE.view==='categories';
+    document.getElementById('addItemBtn').onclick = ()=>{
+      const input = document.getElementById('newItemInput');
+      const val = input.value.trim();
+      if(!val) return;
+      const arr = isCat? DATA.categories : DATA.locations;
+      if(arr.includes(val)) { showToast('Already exists'); return; }
+      arr.push(val); persist(); showToast((isCat?'Category':'Location')+' added'); render();
+    };
+    document.querySelectorAll('[data-remove]').forEach(b=> b.addEventListener('click', ()=>{
+      const name = b.dataset.remove;
+      if(isCat) DATA.categories = DATA.categories.filter(c=>c!==name);
+      else DATA.locations = DATA.locations.filter(l=>l!==name);
+      persist(); render();
+    }));
+  }
+
+  if(STATE.view==='employees'){
+    const doAddEmp = ()=>{
+      const nameEl = document.getElementById('empName');
+      const name = nameEl.value.trim();
+      const dept = document.getElementById('empDept').value.trim();
+      if(!name){ showToast('Enter a name first'); nameEl.focus(); return; }
+      DATA.employees.push({id:'EMP-'+Date.now(), name, department:dept});
+      persist(); showToast('Employee added: '+name); render();
+    };
+    document.getElementById('addEmpBtn').onclick = doAddEmp;
+    document.getElementById('empName').addEventListener('keydown', e=>{ if(e.key==='Enter') doAddEmp(); });
+    document.getElementById('empDept').addEventListener('keydown', e=>{ if(e.key==='Enter') doAddEmp(); });
+    document.querySelectorAll('[data-remove-emp]').forEach(b=> b.addEventListener('click', ()=>{
+      DATA.employees = DATA.employees.filter(e=>e.id!==b.dataset.removeEmp);
+      persist(); showToast('Employee removed'); render();
+    }));
+  }
+
+  if(STATE.view==='reports'){
+    document.querySelectorAll('[data-report]').forEach(b=> b.addEventListener('click', ()=>{ STATE.reportKey=b.dataset.report; render(); }));
+    document.getElementById('exportCsv').onclick = ()=>{
+      const rep = REPORTS.find(r=>r.key===(STATE.reportKey||'all'));
+      const list = DATA.assets.filter(rep.filter);
+      download(rep.key+'-report.csv', assetsToCSV(list), 'text/csv');
+    };
+    document.getElementById('exportXlsx').onclick = ()=>{
+      const rep = REPORTS.find(r=>r.key===(STATE.reportKey||'all'));
+      const list = DATA.assets.filter(rep.filter);
+      exportXLSX(list, rep.key+'-report.xlsx', rep.label);
+    };
+    document.getElementById('printReport').onclick = ()=> window.print();
+  }
+
+  if(STATE.view==='users'){
+    document.getElementById('addUserBtn').onclick = ()=> userFormModal(null);
+    document.querySelectorAll('[data-edit-user]').forEach(b=> b.addEventListener('click', ()=> userFormModal(DATA.users.find(u=>u.id===b.dataset.editUser))));
+    document.querySelectorAll('[data-remove-user]').forEach(b=> b.addEventListener('click', ()=>{
+      if(DATA.users.length<=1){ showToast('At least one user account is required'); return; }
+      const u = DATA.users.find(x=>x.id===b.dataset.removeUser);
+      if(getSession()===u.username){ showToast("Can't remove the account you're logged in as"); return; }
+      confirmModal(`Remove user ${u.name}?`, ()=>{ DATA.users = DATA.users.filter(x=>x.id!==u.id); persist(); showToast('User removed'); render(); }, {title:'Remove user', confirmLabel:'Remove'});
+    }));
+  }
+
+  if(STATE.view==='settings'){
+    document.getElementById('saveSettings').onclick = ()=>{
+      DATA.settings.currentUser = document.getElementById('settingsName').value.trim() || DATA.settings.currentUser;
+      persist(); render(); showToast('Profile saved');
+    };
+    document.getElementById('exportJson').onclick = ()=> download('asset-inventory-data.json', JSON.stringify(DATA,null,2), 'application/json');
+    document.getElementById('importJson').onchange = e=>{
+      const file = e.target.files[0]; if(!file) return;
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        try{ const parsed = JSON.parse(reader.result); DATA = parsed; persist(); render(); showToast('Data imported'); }
+        catch(err){ showToast('Invalid JSON file'); }
+      };
+      reader.readAsText(file);
+    };
+    document.getElementById('resetData').onclick = ()=>{
+      confirmModal('Reset all data to the sample dataset? This cannot be undone.', ()=>{
+        DATA = seedData(); persist(); render(); showToast('Data reset');
+      }, {title:'Reset data', confirmLabel:'Reset'});
+    };
+  }
+}
+
+function render2AssetsOnly(){
+  document.getElementById('content').innerHTML = viewAssets();
+  wireEvents();
+}
+
+/* ===================== GLOBAL SEARCH ===================== */
+document.getElementById('globalSearchInput').addEventListener('input', e=>{
+  STATE.assetFilters.q = e.target.value;
+  STATE.view = 'assets';
+  render();
+  document.getElementById('assetSearch').focus();
+  document.getElementById('assetSearch').setSelectionRange(e.target.value.length, e.target.value.length);
+});
+
+document.getElementById('menuToggle').addEventListener('click', ()=> document.getElementById('sidebar').classList.toggle('open'));
+
+/* ===================== AUTH ===================== */
+function tryLogin(username, password){
+  const u = DATA.users.find(x=> x.username.toLowerCase()===String(username).trim().toLowerCase() && x.password===password);
+  if(!u) return false;
+  DATA.settings.currentUser = u.name;
+  DATA.settings.role = u.role;
+  persist();
+  setSession(u.username);
+  return true;
+}
+function logout(){
+  clearSession();
+  document.getElementById('shell').style.display='none';
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('loginPassword').value='';
+  document.getElementById('loginError').classList.remove('show');
+  document.getElementById('loginUsername').focus();
+}
+function showLoadingThenEnter(){
+  document.getElementById('loginScreen').style.display='none';
+  const loadingScreen = document.getElementById('loadingScreen');
+  const fill = document.getElementById('progressFill');
+  fill.style.transition = 'none';
+  fill.style.width = '0%';
+  loadingScreen.style.display='flex';
+  // force reflow so the transition re-triggers, then animate to full
+  void fill.offsetWidth;
+  fill.style.transition = 'width .95s cubic-bezier(.4,0,.2,1)';
+  requestAnimationFrame(()=> requestAnimationFrame(()=> { fill.style.width = '100%'; }));
+  setTimeout(()=>{
+    loadingScreen.style.display='none';
+    document.getElementById('shell').style.display='flex';
+    render();
+  }, 1000);
+}
+function doLoginAttempt(){
+  const username = document.getElementById('loginUsername').value;
+  const password = document.getElementById('loginPassword').value;
+  if(!username || !password){
+    document.getElementById('loginError').textContent = 'Please enter both username and password.';
+    document.getElementById('loginError').classList.add('show');
+    return;
+  }
+  if(tryLogin(username, password)){
+    showLoadingThenEnter();
+  } else {
+    document.getElementById('loginError').textContent = 'Incorrect username or password.';
+    document.getElementById('loginError').classList.add('show');
+  }
+}
+document.getElementById('loginForm').addEventListener('submit', e=>{
+  e.preventDefault();
+  doLoginAttempt();
+});
+document.getElementById('loginSubmitBtn').addEventListener('click', e=>{
+  e.preventDefault();
+  doLoginAttempt();
+});
+
+async function boot(){
+  const connectingScreen = document.getElementById('connectingScreen');
+  const connectingSub = connectingScreen.querySelector('.sub');
+  const connectingFill = document.getElementById('connectingFill');
+  requestAnimationFrame(()=> requestAnimationFrame(()=>{ connectingFill.style.width = '75%'; }));
+
+  let cloudData = null;
+  try{
+    cloudData = await Promise.race([
+      fetchAllFromSupabase(),
+      new Promise(resolve=> setTimeout(()=>resolve(null), 8000)) // don't hang forever if unreachable
+    ]);
+  }catch(e){ cloudData = null; }
+
+  if(cloudData){
+    DATA = cloudData;
+    cacheLocally(DATA);
+    cloudStatus = 'connected';
+  } else {
+    connectingSub.textContent = 'Working offline (using data on this device)';
+    DATA = loadDataLocalOnly();
+    cloudStatus = 'offline';
+  }
+  connectingFill.style.transition = 'width .3s ease';
+  connectingFill.style.width = '100%';
+
+  setTimeout(()=>{
+    connectingScreen.style.display = 'none';
+    const sessionUsername = getSession();
+    const user = sessionUsername && DATA.users.find(u=>u.username===sessionUsername);
+    if(user){
+      DATA.settings.currentUser = user.name;
+      DATA.settings.role = user.role;
+      document.getElementById('shell').style.display='flex';
+      render();
+    } else {
+      document.getElementById('loginScreen').style.display='flex';
+      document.getElementById('loginUsername').focus();
+    }
+  }, 250);
+}
+
+/* ===================== INIT ===================== */
+boot();
+</script>
+</body>
+</html>
